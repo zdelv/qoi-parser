@@ -1,0 +1,13 @@
+[package]
+name = "qoi-parser"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.72"
+byteorder = "1.4.3"
+clap = { version = "4.3.15", features = ["derive"] }
+image = "0.24.6"
+thiserror = "1.0.43"
