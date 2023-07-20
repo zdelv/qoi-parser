@@ -201,6 +201,14 @@ impl Decoder {
         }
     }
 
+    /// Resets a Decoder to its default state. This is used before any decoding occurs, ensuring
+    /// that we start at the correct state.
+    fn reset(&mut self) {
+        self.state = Pixel::new(0, 0, 0, 255);
+        self.buffer = [Pixel::default(); 64]
+    }
+
+    /// Hashes a pixel given the format from the documentation.
     #[inline]
     fn hash_pixel(p: Pixel) -> u8 {
         let r = Wrapping(p.r);
@@ -228,6 +236,9 @@ impl Decoder {
     where
         T: Read,
     {
+        // Reset the decoder's state, just in case this object is used more than once.
+        self.reset();
+
         let mut buf = [0u8; 14];
         data.read_exact(&mut buf)?;
 
