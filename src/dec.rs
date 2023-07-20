@@ -321,16 +321,13 @@ impl Decoder {
                                 let dr_dg = (buf[0] >> 4) & 0x0f;
                                 let db_dg = buf[0] & 0x0f;
 
+                                let mid = u8::wrapping_sub(dg, 8);
                                 // Set each pixel value from the differences.
-                                self.state.r = u8::wrapping_add(
-                                    self.state.r,
-                                    u8::wrapping_add(u8::wrapping_sub(dg, 8), dr_dg),
-                                );
+                                self.state.r =
+                                    u8::wrapping_add(self.state.r, u8::wrapping_add(mid, dr_dg));
                                 self.state.g = u8::wrapping_add(self.state.g, dg);
-                                self.state.b = u8::wrapping_add(
-                                    self.state.b,
-                                    u8::wrapping_add(u8::wrapping_sub(dg, 8), db_dg),
-                                );
+                                self.state.b =
+                                    u8::wrapping_add(self.state.b, u8::wrapping_add(mid, db_dg));
                             }
                             ops::QOI_OP_RUN => {
                                 // Grab the number of pixels in the run.
