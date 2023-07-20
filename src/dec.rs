@@ -256,13 +256,16 @@ impl Decoder {
 
                                 // Set each pixel value from the differences.
                                 // Each is biased by 2 (e.g., 0b00 = -2, 0b11 = 1).
-                                self.state.r += dr - 2;
-                                self.state.g += dg - 2;
-                                self.state.b += db - 2;
+                                self.state.r =
+                                    u8::wrapping_add(self.state.r, u8::wrapping_sub(dr, 2));
+                                self.state.g =
+                                    u8::wrapping_add(self.state.g, u8::wrapping_sub(dg, 2));
+                                self.state.b =
+                                    u8::wrapping_add(self.state.b, u8::wrapping_sub(db, 2));
                             }
                             ops::QOI_OP_LUMA => {
                                 // Grab the green difference (6-bits).
-                                let dg = (buf[0] & 0x3f) - 32;
+                                let dg = u8::wrapping_sub(buf[0] & 0x3f, 32);
 
                                 // Read in the second byte of data.
                                 data.read_exact(&mut buf)?;
@@ -272,9 +275,15 @@ impl Decoder {
                                 let db_dg = buf[0] & 0x0f;
 
                                 // Set each pixel value from the differences.
-                                self.state.r += dg - 8 + dr_dg;
-                                self.state.g += dg;
-                                self.state.b += dg - 8 + db_dg;
+                                self.state.r = u8::wrapping_add(
+                                    self.state.r,
+                                    u8::wrapping_add(u8::wrapping_sub(dg, 8), dr_dg),
+                                );
+                                self.state.g = u8::wrapping_add(self.state.g, dg);
+                                self.state.b = u8::wrapping_add(
+                                    self.state.b,
+                                    u8::wrapping_add(u8::wrapping_sub(dg, 8), db_dg),
+                                );
                             }
                             ops::QOI_OP_RUN => {
                                 // Grab the number of pixels in the run.
