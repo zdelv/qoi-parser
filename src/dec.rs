@@ -296,3 +296,41 @@ impl Decoder {
         Ok((header, img))
     }
 }
+
+mod tests {
+
+    #[test]
+    fn test_header() {
+        use crate::dec::{Channels, Colorspace, Header};
+
+        let width = u32::to_be_bytes(100);
+        let height = u32::to_be_bytes(200);
+
+        let data: [u8; 14] = [
+            b'q',
+            b'o',
+            b'i',
+            b'f',
+            width[0],
+            width[1],
+            width[2],
+            width[3],
+            height[0],
+            height[1],
+            height[2],
+            height[3],
+            Channels::RGB as u8,
+            Colorspace::Linear as u8,
+        ];
+
+        let good = Header {
+            magic: [b'q', b'o', b'i', b'f'],
+            width: 100,
+            height: 200,
+            channels: Channels::RGB,
+            colorspace: Colorspace::Linear
+        };
+
+        assert_eq!(good, Header::from_bytes(&data).unwrap());
+    }
+}
