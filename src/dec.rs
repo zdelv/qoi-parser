@@ -5,6 +5,9 @@ use std::num::Wrapping;
 
 use crate::utils::Error;
 
+/// The number of channels in the image. This is specified in the header.
+///
+/// This does not necessarily mean anything for the content of the image.
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Channels {
@@ -37,6 +40,9 @@ impl Display for Channels {
     }
 }
 
+/// The colorspace in use by the pixels in the image. This is specified in the header.
+///
+/// This does not necessarily mean anything for the content of the image.
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Colorspace {
@@ -70,6 +76,9 @@ impl Display for Colorspace {
     }
 }
 
+/// The header that appears as the first 14 bytes of a QOI image.
+///
+/// This should always be read first before reading any of the rest of the file.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Header {
     pub magic: [u8; 4], // reads to 'qoif'
@@ -118,6 +127,10 @@ impl Display for Header {
     }
 }
 
+/// Submodule containing constants representing the ops available in the QOI format. This isn't an
+/// enum due to a limitation in the lanaguage that makes going from Enum -> u8 in a match statement
+/// (i.e., in a pattern clause) not possible. The work arounds are annoying so, this is the most
+/// clean way of implementing it.
 mod ops {
     pub const QOI_OP_RGB: u8 = 0b1111_1110;
     pub const QOI_OP_RGBA: u8 = 0b1111_1111;
@@ -127,6 +140,8 @@ mod ops {
     pub const QOI_OP_RUN: u8 = 0b1100_0000;
 }
 
+/// A pixel with RGBA values.
+/// TODO: This only allows for RGBA pixels. RGB should be exposed somehow.
 #[derive(Copy, Clone, Debug)]
 pub struct Pixel {
     r: u8,
@@ -140,6 +155,7 @@ impl Pixel {
         Pixel { r, g, b, a }
     }
 
+    #[allow(dead_code)]
     pub fn to_bytes(self) -> [u8; 4] {
         [self.r, self.g, self.b, self.a]
     }
@@ -154,12 +170,30 @@ impl Display for Pixel {
     }
 }
 
+/// This default impl is NOT for the default state of a QOI decoder. It is for a default value for
+/// pixels, which is all 0s.
+impl Default for Pixel {
+    fn default() -> Self {
+        Pixel::new(0, 0, 0, 0)
+    }
+}
+
+/// A decoder for QOI images.
+///
+/// This is a fairly lightweight object right now. It only contains the decoder state (last pixel
+/// seen/written) and the buffer containing past pixel values at a hashed position.
+///
+/// Later plans include adding streaming decoder support, where the state of this decoder would
+/// become much more complicated (most likely some form of a state machine). Streaming in this case
+/// would mean byte-by-byte parsing of some form, with minimal memory usage. Users could pass in
+/// bytes as they recieve them, and the Decoder would produce bytes as it needs.
 pub struct Decoder {
     state: Pixel,
     buffer: [Pixel; 64],
 }
 
 impl Decoder {
+    /// Creates a new Decoder with its default state, ready for parsing.
     pub fn new() -> Self {
         Self {
             state: Pixel::new(0, 0, 0, 255),
@@ -188,6 +222,8 @@ impl Decoder {
     ///
     /// The decoding code below was heavily based on the reference implementation found at:
     /// https://github.com/phoboslab/qoi
+    ///
+    /// TODO: This only works with RGBA pixels, when it should work with RGB as well.
     pub fn decode<T>(&mut self, data: &mut T) -> Result<(Header, Vec<Pixel>), anyhow::Error>
     where
         T: Read,
@@ -209,7 +245,7 @@ impl Decoder {
         // Read does not guarantee that .read() will return enough bytes to fill the buffer it is
         // given. You must either check that you were given fewer bytes and recall .read(), or use
         // the alternative .read_exact(), which does that for you. Caveat here is that it attempts
-        // to fill the buffer and you must have a buffer of correct size.
+        // to fill the buffer and you must have a buffer of the correct size.
         //
         // We preallocate buffers for that use here.
         let mut rgba_buf = [0; 4];
@@ -337,7 +373,7 @@ mod tests {
             width: 100,
             height: 200,
             channels: Channels::RGB,
-            colorspace: Colorspace::Linear
+            colorspace: Colorspace::Linear,
         };
 
         assert_eq!(good, Header::from_bytes(&data).unwrap());
