@@ -153,15 +153,6 @@ impl Pixel {
         Pixel { r, g, b, a }
     }
 
-    fn from_bytes(b: &[u8; 4]) -> Self {
-        Pixel {
-            r: b[0],
-            g: b[1],
-            b: b[2],
-            a: b[3],
-        }
-    }
-
     fn to_bytes(self) -> [u8; 4] {
         [self.r, self.g, self.b, self.a]
     }
@@ -185,16 +176,25 @@ impl Decoder {
     fn new() -> Self {
         Self {
             state: Pixel::new(0, 0, 0, 255),
-            buffer: [Pixel::new(0, 0, 0, 255); 64],
+            buffer: [Pixel::new(0, 0, 0, 0); 64],
         }
     }
+
+    #[inline]
+    fn hash_pixel(p: Pixel) -> u8 {
+        p.r * 3 + p.g * 5 + p.b * 7 + p.a * 11
+    }
+
     /// Assumes to start at the beginning, before the header.
+    /// 
+    /// The decoding code below was heavily based on the reference implementation found at:
+    /// https://github.com/phoboslab/qoi
     fn decode<T>(&mut self, data: &mut T) -> Result<(Header, Vec<Pixel>), anyhow::Error>
     where
         T: Read + std::io::Seek,
     {
         let mut buf = [0u8; 14];
-        data.read(&mut buf)?;
+        data.read_exact(&mut buf)?;
 
         let header = Header::from_bytes(&buf)?;
 
@@ -202,142 +202,99 @@ impl Decoder {
         let mut img = vec![Pixel::new(0, 0, 0, 0); num_pixels];
 
         // Main buffer used for storing data.
-        let mut buf = [0u8; 4];
+        let mut buf = [0u8; 1];
         // let mut op_buf = [0u8; 1];
 
-        let mut pos = 0; // Header is 14 bytes
-        while pos < num_pixels {
-            data.take(1).read(&mut buf)?;
+        let mut run = 0;
 
-            match buf[0] {
-                // 8-bit tags have precedence (RGB & RGBA).
-                ops::QOI_OP_RGB => {
-                    // Read the RGB values
-                    data.take(3).read(&mut buf)?;
+        // Read does not guarantee that .read() will return enough bytes to fill the buffer it is
+        // given. You must either check that you were given fewer bytes and recall .read(), or use
+        // the alternative .read_exact(), which does that for you. Caveat here is that it attempts
+        // to fill the buffer and you must have a buffer of correct size.
+        //
+        // We preallocate buffers for that use here.
+        let mut rgba_buf = [0; 4];
+        let mut rgb_buf = [0; 3];
 
-                    // Set the alpha channel to the last pixel
-                    buf[3] = self.state.a;
+        // Every loop is one pixel in the image.
+        for pos in 0..num_pixels {
+            // Run gets set to some number if QOI_OP_RUN is found. Each loop skips reading more ops
+            // and instead just uses the previous pixel state.
+            if run > 0 {
+                run -= 1;
+            } else {
+                data.read_exact(&mut buf)?;
 
-                    // Set the pixel
-                    let pix = Pixel::from_bytes(&buf);
-                    img[pos] = pix;
+                match buf[0] {
+                    // 8-bit tags have precedence (RGB & RGBA).
+                    ops::QOI_OP_RGB => {
+                        // Read the RGB values
+                        data.read_exact(&mut rgb_buf)?;
 
-                    // Set the last pixel state
-                    self.state = pix;
+                        // Set the pixel
+                        self.state = Pixel::new(rgb_buf[0], rgb_buf[1], rgb_buf[2], self.state.a);
+                    }
+                    ops::QOI_OP_RGBA => {
+                        // Read the RGBA values
+                        data.read_exact(&mut rgba_buf)?;
 
-                    // Hash the pixel and set it in the global buffer
-                    let hash = Decoder::hash_pixel(pix);
-                    self.buffer[hash as usize] = pix;
-                    pos += 1;
-                }
-                ops::QOI_OP_RGBA => {
-                    // Read the RGBA values
-                    data.take(4).read(&mut buf)?;
-
-                    // Set the pixel
-                    let pix = Pixel::from_bytes(&buf);
-                    img[pos] = pix;
-
-                    // Set the last pixel state
-                    self.state = pix;
-
-                    // Hash the pixel and set it in the global buffer
-                    let hash = Decoder::hash_pixel(pix);
-                    self.buffer[hash as usize] = pix;
-                    pos += 1;
-                }
-                // 2-bit tags
-                _ => {
-                    // Match on only the top two bits.
-                    match buf[0] & 0b1100_0000 {
-                        ops::QOI_OP_INDEX => {
-                            // Grab the index
-                            let idx = buf[0] | 0b0011_1111;
-
-                            // Grab the pixel at this index
-                            let pix = self.buffer[idx as usize];
-
-                            // Set the pixel
-                            img[pos] = pix;
-
-                            // Set the last pixel state
-                            self.state = pix;
-                            pos += 1;
-                        }
-                        ops::QOI_OP_DIFF => {
-                            // Grab the three differences (r,g,b). Each are 2-bits.
-                            let dr = (buf[0] >> 4) & 0x03;
-                            let dg = (buf[0] >> 2) & 0x03;
-                            let db = buf[0] & 0x03;
-
-                            // Clone the last pixel state.
-                            let mut pix = self.state.clone();
-
-                            // Set each pixel value from the differences.
-                            // Each is biased by 2 (e.g., 0b00 = -2, 0b11 = 1).
-                            pix.r += dr - 2;
-                            pix.g += dg - 2;
-                            pix.b += db - 2;
-
-                            // Set the pixel
-                            img[pos] = pix;
-
-                            // Set the last pixel state
-                            self.state = pix;
-                            pos += 1;
-                        }
-                        ops::QOI_OP_LUMA => {
-                            // Grab the green difference (6-bits).
-                            let dg = u8::wrapping_sub(buf[0] & 0b0011_1111, 32);
-
-                            // Read in the second byte of data.
-                            data.take(1).read(&mut buf)?;
-
-                            // Grab the dr - dg and db - dg values (4-bits).
-                            let dr_dg = (buf[0] & 0b1111_0000) >> 4;
-                            let db_dg = buf[0] & 0b0000_1111;
-
-                            // Clone the last pixel state.
-                            let mut pix = self.state.clone();
-
-                            // Set each pixel value from the differences.
-                            pix.r += dg - 8 + dr_dg;
-                            pix.g += dg;
-                            pix.b += dg - 8 + db_dg;
-
-                            // Set the pixel
-                            img[pos] = pix;
-
-                            // Set the last pixel state
-                            self.state = pix;
-                            pos += 1;
-                        }
-                        ops::QOI_OP_RUN => {
-                            // Grab the number of pixels in the run.
-                            let run_len = (buf[0] & 0b0011_1111) as usize;
-
-                            // Grab the last pixel.
-                            let pix = self.state;
-
-                            // Duplicate the pixel through the image.
-                            for j in 0..run_len {
-                                img[(pos + j) as usize] = pix;
+                        // Set the pixel
+                        self.state = Pixel::new(rgba_buf[0], rgba_buf[1], rgba_buf[2], rgba_buf[3]);
+                    }
+                    // 2-bit tags
+                    _ => {
+                        // Match on only the top two bits.
+                        match buf[0] & 0xc0 {
+                            ops::QOI_OP_INDEX => {
+                                // Grab the pixel at this index
+                                self.state = self.buffer[buf[0] as usize];
                             }
-                            pos += run_len;
-                        }
-                        _ => {
-                            Err(Error::DecodingError("Unknown tag!".to_string()))?;
+                            ops::QOI_OP_DIFF => {
+                                // Grab the three differences (r,g,b). Each are 2-bits.
+                                let dr = (buf[0] >> 4) & 0x03;
+                                let dg = (buf[0] >> 2) & 0x03;
+                                let db = buf[0] & 0x03;
+
+                                // Set each pixel value from the differences.
+                                // Each is biased by 2 (e.g., 0b00 = -2, 0b11 = 1).
+                                self.state.r += dr - 2;
+                                self.state.g += dg - 2;
+                                self.state.b += db - 2;
+                            }
+                            ops::QOI_OP_LUMA => {
+                                // Grab the green difference (6-bits).
+                                let dg = (buf[0] & 0x3f) - 32;
+
+                                // Read in the second byte of data.
+                                data.read_exact(&mut buf)?;
+
+                                // Grab the dr - dg and db - dg values (4-bits).
+                                let dr_dg = (buf[0] >> 4) & 0x0f;
+                                let db_dg = buf[0] & 0x0f;
+
+                                // Set each pixel value from the differences.
+                                self.state.r += dg - 8 + dr_dg;
+                                self.state.g += dg;
+                                self.state.b += dg - 8 + db_dg;
+                            }
+                            ops::QOI_OP_RUN => {
+                                // Grab the number of pixels in the run.
+                                run = buf[0] & 0x3f;
+                            }
+                            _ => {
+                                Err(Error::DecodingError("Unknown tag!".to_string()))?;
+                            }
                         }
                     }
                 }
+                // Hash the pixel and set it in the global buffer
+                let hash = Decoder::hash_pixel(self.state);
+                self.buffer[hash as usize % 64] = self.state;
             }
+            img[pos] = self.state;
         }
 
         Ok((header, img))
-    }
-
-    fn hash_pixel(p: Pixel) -> u8 {
-        (p.r * 3 + p.g * 5 + p.b * 7 + p.a * 11) % 64
     }
 }
 
@@ -348,36 +305,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut dec = Decoder::new();
 
-    let (header, img) = dec.decode(&mut file)?;
+    let (_header, img) = dec.decode(&mut file)?;
 
-    let img_len = img.len();
+    // let img_len = img.len();
     println!("{}", img.len());
-    println!("{:#?}", &img[(img_len / 2)..((img_len / 2) + 100)]);
+    // println!("{:#?}", &img[(img_len / 2)..((img_len / 2) + 100)]);
 
     Ok(())
 }
 
 mod tests {
-    use std::io::Cursor;
 
     #[test]
     fn test_save() {
+        use image::codecs::png::PngEncoder;
+        use image::ImageEncoder;
         use std::fs::File;
         use std::io::BufReader;
 
         use crate::Decoder;
 
         let mut file = BufReader::new(File::open("tests/dice.qoi").unwrap());
-
-        let img_p = image::load(&mut file, image::ImageFormat::Qoi).unwrap();
+        // let img_p = image::load(&mut file, image::ImageFormat::Qoi).unwrap();
 
         let mut dec = Decoder::new();
         let (header, img) = dec.decode(&mut file).unwrap();
 
-        let img = image::io::Reader::new(Cursor::new(
-            img.into_iter()
-                .map(|a| a.to_bytes()[..])
-                .collect::<Vec<u8>>(),
-        ));
+        let png_enc = PngEncoder::new(File::create("tests/output.png").unwrap());
+
+        let buf: Vec<u8> = img.into_iter().flat_map(|a| a.to_bytes()).collect();
+
+        png_enc
+            .write_image(&buf, header.width, header.height, image::ColorType::Rgba8)
+            .unwrap();
     }
 }
