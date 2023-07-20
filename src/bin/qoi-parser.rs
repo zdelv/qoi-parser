@@ -1,12 +1,9 @@
-mod dec;
-mod utils;
-
 use std::fs::File;
 use std::io::BufReader;
 
-use crate::utils::Args;
-use crate::dec::Decoder;
 use clap::Parser;
+
+use qoiparser::{Args, Decoder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
