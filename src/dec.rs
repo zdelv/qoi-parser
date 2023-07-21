@@ -97,6 +97,12 @@ impl Header {
             magic[i] = data.read_u8()?;
         }
 
+        if magic != [b'q', b'o', b'i', b'f'] {
+            return Err(Error::HeaderParseError(
+                "Magic bytes did not translate to qoif".to_string(),
+            ))?;
+        }
+
         let width = data.read_u32::<BigEndian>()?;
         let height = data.read_u32::<BigEndian>()?;
 
