@@ -93,9 +93,7 @@ impl Header {
         let mut data = std::io::Cursor::new(data);
 
         let mut magic = [0; 4];
-        for i in 0..4 {
-            magic[i] = data.read_u8()?;
-        }
+        data.read_exact(&mut magic)?;
 
         if magic != [b'q', b'o', b'i', b'f'] {
             return Err(Error::HeaderParseError(
@@ -198,6 +196,12 @@ pub struct Decoder {
     buffer: [Pixel; 64],
 }
 
+impl Default for Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Decoder {
     /// Creates a new Decoder with its default state, ready for parsing.
     pub fn new() -> Self {
@@ -268,8 +272,8 @@ impl Decoder {
         let mut rgba_buf = [0; 4];
         let mut rgb_buf = [0; 3];
 
-        // Every loop is one pixel in the image.
-        for pos in 0..num_pixels {
+        // Modify every pixel in the image
+        for pix in img.iter_mut().take(num_pixels) {
             // Run gets set to some number if QOI_OP_RUN is found. Each loop skips reading more ops
             // and instead just uses the previous pixel state.
             if run > 0 {
@@ -349,7 +353,7 @@ impl Decoder {
                 let hash = Decoder::hash_pixel(self.state);
                 self.buffer[hash as usize % 64] = self.state;
             }
-            img[pos] = self.state;
+            *pix = self.state;
         }
 
         Ok((header, img))
