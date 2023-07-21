@@ -357,33 +357,32 @@ impl Decoder {
 }
 
 mod tests {
-     #[test]
-     fn test_decoder() {
-         use crate::dec::Decoder;
-         use image::io::Reader as ImageReader;
-         use std::fs::File;
-         use std::path::PathBuf;
-  
-         // Using image's QOI reader as a known-good reader. We should parse to the same bytes.
-         let img_qoi_img = ImageReader::open("tests/dice.qoi")
-             .unwrap()
-             .decode()
-             .unwrap();
-         let img_qoi_img = img_qoi_img.into_bytes();
-  
-         let mut qoi_file = File::open(PathBuf::from("tests/dice.qoi")).unwrap();
-         let (_, qoi_img) = Decoder::new().decode(&mut qoi_file).unwrap();
-         let qoi_img: Vec<u8> = qoi_img.into_iter().flat_map(|a| a.to_bytes()).collect();
-  
-         // Not doing an assert_eq on qoi_img and img_qoi_img because it blows up the terminal log.
-         for (i, (p1, p2)) in img_qoi_img.iter().zip(qoi_img.iter()).enumerate() {
-             if p1 != p2 {
-                 println!("{}", i);
-             }
-             assert_eq!(p1, p2)
-         }
-     }
-  
+    #[test]
+    fn test_decoder() {
+        use crate::dec::Decoder;
+        use image::io::Reader as ImageReader;
+        use std::fs::File;
+        use std::path::PathBuf;
+
+        // Using image's QOI reader as a known-good reader. We should parse to the same bytes.
+        let img_qoi_img = ImageReader::open("tests/dice.qoi")
+            .unwrap()
+            .decode()
+            .unwrap();
+        let img_qoi_img = img_qoi_img.into_bytes();
+
+        let mut qoi_file = File::open(PathBuf::from("tests/dice.qoi")).unwrap();
+        let (_, qoi_img) = Decoder::new().decode(&mut qoi_file).unwrap();
+        let qoi_img: Vec<u8> = qoi_img.into_iter().flat_map(|a| a.to_bytes()).collect();
+
+        // Not doing an assert_eq on qoi_img and img_qoi_img because it blows up the terminal log.
+        for (i, (p1, p2)) in img_qoi_img.iter().zip(qoi_img.iter()).enumerate() {
+            if p1 != p2 {
+                println!("{}", i);
+            }
+            assert_eq!(p1, p2)
+        }
+    }
 
     #[test]
     fn test_header() {
