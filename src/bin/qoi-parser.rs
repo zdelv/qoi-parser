@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::time::Instant;
 
 use clap::Parser;
 
@@ -12,63 +13,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut file = BufReader::new(File::open(args.file)?);
 
+
     if args.stream {
         println!("Using stream decoder");
-        let mut iter = file.bytes();
-
         let mut sdec = StreamDecoder::new();
 
         let mut img_size: u64 = 0;
         let mut img: Vec<Pixel> = Vec::new();
 
-        while let Some(b) = iter.next() {
-            match b {
-                Ok(byte) => {
-                    match sdec.feed(byte).unwrap() {
-                        // The StreamDecoder informs us if it needs more bytes after recieving one
-                        // byte. This allows us to work on just getting those bytes and checking
-                        // the state again later.
-                        StreamDecoderOutput::NeedMore(_) => {}
+        let mut buf = [0u8; 1];
 
-                        // After recieving the image size, we can reserve space for the image
-                        // buffer.
-                        StreamDecoderOutput::ImageWidthParsed(w) => {
-                            img_size = w as u64;
-                        }
-                        StreamDecoderOutput::ImageHeightParsed(h) => {
-                            img_size *= h as u64;
-                            img.reserve_exact(img_size as usize);
-                        }
+        let now = Instant::now();
+        while let Ok(_) = file.read_exact(&mut buf) {
+            match sdec.feed(buf[0]).unwrap() {
+                // The StreamDecoder informs us if it needs more bytes after recieving one
+                // byte. This allows us to work on just getting those bytes and checking
+                // the state again later.
+                StreamDecoderOutput::NeedMore(_) => {}
 
-                        // When pixels are ready to be produced, the StreamDecoder returns an
-                        // iterator that produces those pixels. This is a lightweight iterator,
-                        // with just a Pixel and u8 count attached (5 bytes in total).
-                        StreamDecoderOutput::Pixels(it) => {
-                            for pix in it {
-                                img.push(pix);
-                            }
-                        }
+                // After recieving the image size, we can reserve space for the image
+                // buffer.
+                StreamDecoderOutput::ImageWidthParsed(w) => {
+                    img_size = w as u64;
+                }
+                StreamDecoderOutput::ImageHeightParsed(h) => {
+                    img_size *= h as u64;
+                    img.reserve_exact(img_size as usize);
+                }
 
-                        // The StreamDecoder informs us when it has returned all pixels in the
-                        // image.
-                        StreamDecoderOutput::Finished => break,
-                        _ => {}
+                // When pixels are ready to be produced, the StreamDecoder returns an
+                // iterator that produces those pixels. This is a lightweight iterator,
+                // with just a Pixel and u8 count attached (5 bytes in total).
+                StreamDecoderOutput::Pixels(it) => {
+                    for pix in it {
+                        img.push(pix);
                     }
                 }
-                // If we failed to pull a byte out of the file, then throw an error.
-                Err(e) => {
-                    println!("{}", e);
-                    assert!(false)
-                }
+
+                // The StreamDecoder informs us when it has returned all pixels in the
+                // image.
+                StreamDecoderOutput::Finished => break,
+                _ => {}
             }
         }
+        let dur = Instant::now() - now;
+        println!("Time: {} ms", (dur.as_micros() as f32) / 1000.);
         println!("Num pixels: {}", img.len());
+
 
     } else {
         println!("Using chunked decoder");
         let mut dec = Decoder::new();
 
+        let now = Instant::now();
         let (_, img) = dec.decode(&mut file)?;
+        let dur = Instant::now() - now;
+
+        println!("Time: {} ms", (dur.as_micros() as f32) / 1000.);
         println!("Num pixels: {}", img.len());
     }
 
