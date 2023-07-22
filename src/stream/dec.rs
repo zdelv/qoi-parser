@@ -37,7 +37,9 @@ impl Display for StreamDecoderOutput {
 }
 
 /// The internal state of a StreamDecoder.
+#[derive(Default, Debug)]
 enum StreamDecoderState {
+    #[default]
     NotStarted,        // No bytes have been passed in.
     Finished,          // All bytes in image have been parsed.
     ParsingHeader(u8), // Currently parsing the header. Contains number of bytes currently parsed.
@@ -58,12 +60,6 @@ impl Display for StreamDecoderState {
     }
 }
 
-impl Default for StreamDecoderState {
-    fn default() -> Self {
-        StreamDecoderState::NotStarted
-    }
-}
-
 // TODO: Allow for RGB instead of RGBA for 64 bytes of savings. Remove buffer for 4 bytes. Allow for
 // 32 bit maximum (through features) to reduce num_pix and cur_pix to u32s (4 byte savings each).
 pub struct StreamDecoder {
@@ -74,6 +70,12 @@ pub struct StreamDecoder {
     buffer: [u8; 4],           // 4 bytes
     num_pix: Option<u64>,      // 8 bytes
     cur_pix: u64,              // 8 bytes
+}
+
+impl Default for StreamDecoder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StreamDecoder {
@@ -365,7 +367,7 @@ impl StreamDecoder {
             self.state = State::Finished;
         }
 
-        return out;
+        out
     }
 }
 

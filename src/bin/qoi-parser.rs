@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut buf = [0u8; 1];
 
         let now = Instant::now();
-        while let Ok(_) = file.read_exact(&mut buf) {
+        while file.read_exact(&mut buf).is_ok() {
             match sdec.feed(buf[0]).unwrap() {
                 // The StreamDecoder informs us if it needs more bytes after recieving one
                 // byte. This allows us to work on just getting those bytes and checking
