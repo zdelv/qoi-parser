@@ -1,22 +1,77 @@
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 
 use clap::Parser;
 
 use qoiparser::{Args, Decoder};
+use qoiparser::stream::{StreamDecoderOutput, StreamDecoder};
+use qoiparser::Pixel;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     let mut file = BufReader::new(File::open(args.file)?);
 
-    let mut dec = Decoder::new();
+    if args.stream {
+        println!("Using stream decoder");
+        let mut iter = file.bytes();
 
-    let (_header, img) = dec.decode(&mut file)?;
+        let mut sdec = StreamDecoder::new();
 
-    // let img_len = img.len();
-    println!("{}", img.len());
-    // println!("{:#?}", &img[(img_len / 2)..((img_len / 2) + 100)]);
+        let mut img_size: u64 = 0;
+        let mut img: Vec<Pixel> = Vec::new();
+
+        while let Some(b) = iter.next() {
+            match b {
+                Ok(byte) => {
+                    match sdec.feed(byte).unwrap() {
+                        // The StreamDecoder informs us if it needs more bytes after recieving one
+                        // byte. This allows us to work on just getting those bytes and checking
+                        // the state again later.
+                        StreamDecoderOutput::NeedMore(_) => {}
+
+                        // After recieving the image size, we can reserve space for the image
+                        // buffer.
+                        StreamDecoderOutput::ImageWidthParsed(w) => {
+                            img_size = w as u64;
+                        }
+                        StreamDecoderOutput::ImageHeightParsed(h) => {
+                            img_size *= h as u64;
+                            img.reserve_exact(img_size as usize);
+                        }
+
+                        // When pixels are ready to be produced, the StreamDecoder returns an
+                        // iterator that produces those pixels. This is a lightweight iterator,
+                        // with just a Pixel and u8 count attached (5 bytes in total).
+                        StreamDecoderOutput::Pixels(it) => {
+                            for pix in it {
+                                img.push(pix);
+                            }
+                        }
+
+                        // The StreamDecoder informs us when it has returned all pixels in the
+                        // image.
+                        StreamDecoderOutput::Finished => break,
+                        _ => {}
+                    }
+                }
+                // If we failed to pull a byte out of the file, then throw an error.
+                Err(e) => {
+                    println!("{}", e);
+                    assert!(false)
+                }
+            }
+        }
+        println!("Num pixels: {}", img.len());
+
+    } else {
+        println!("Using chunked decoder");
+        let mut dec = Decoder::new();
+
+        let (_, img) = dec.decode(&mut file)?;
+        println!("Num pixels: {}", img.len());
+    }
+
 
     Ok(())
 }

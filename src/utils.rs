@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, arg};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -11,5 +11,8 @@ pub enum Error {
 
 #[derive(Debug, Parser)]
 pub struct Args {
+    #[arg(short, long)]
     pub file: PathBuf,
+    #[arg(short, long)]
+    pub stream: bool
 }
