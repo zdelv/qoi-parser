@@ -26,9 +26,12 @@ mod tests {
     fn test_save_stream_decoder() {
         use image::codecs::png::PngEncoder;
         use image::ImageEncoder;
-        use qoiparser::{Pixel, StreamDecoder, StreamDecoderOutput};
         use std::fs::File;
         use std::io::{BufReader, Read};
+
+        use qoiparser::stream::{StreamDecoder, StreamDecoderOutput};
+        use qoiparser::Pixel;
+
 
         let file = BufReader::new(File::open("tests/dice.qoi").unwrap());
         let mut iter = file.bytes();
@@ -103,9 +106,9 @@ mod tests {
         use std::fs::File;
         use std::io::BufReader;
 
-        use crate::Decoder;
+        use qoiparser::Decoder;
 
-        let mut file = BufReader::new(File::open("tests/qoi_test_images/wikipedia_008.qoi").unwrap());
+        let mut file = BufReader::new(File::open("tests/dice.qoi").unwrap());
         // let img_p = image::load(&mut file, image::ImageFormat::Qoi).unwrap();
 
         let mut dec = Decoder::new();

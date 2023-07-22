@@ -17,9 +17,10 @@ chunked decoder stores the entire image in memory while decoding. The output is
 both the `Header` and a `Vec<Pixel>`:
 
 ```rust
-use qoiparser::dec::Decoder;
 use std::fs::File;
 use std::path::PathBuf;
+
+use qoiparser::Decoder;
 
 let mut qoi_file = File::open(PathBuf::from("tests/dice.qoi")).unwrap();
 
@@ -52,10 +53,12 @@ they wish to iterate over bytes or store pixels, which is useful for some
 usecases.
 
 ```rust
-use qoiparser::dec::{Pixel, StreamDecoder, StreamDecoderOutput};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
+
+use qoiparser::stream::{StreamDecoder, StreamDecoderOutput};
+use qoiparser::Pixel;
 
 let mut sdec = StreamDecoder::new();
 
