@@ -96,9 +96,10 @@ impl Header {
         data.read_exact(&mut magic)?;
 
         if magic != [b'q', b'o', b'i', b'f'] {
-            return Err(Error::HeaderParseError(
-                "Magic bytes did not translate to qoif".to_string(),
-            ))?;
+            return Err(Error::HeaderParseError(format!(
+                "Magic bytes did not translate to qoif: {:?}",
+                magic
+            )))?;
         }
 
         let width = data.read_u32::<BigEndian>()?;
