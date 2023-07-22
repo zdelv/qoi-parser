@@ -11,8 +11,12 @@ use qoiparser::Pixel;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let mut file = BufReader::new(File::open(args.file)?);
+    let file = File::open(args.file)?;
 
+    let size = file.metadata()?.len();
+    let size = (size as f32) / f32::powi(1000., 2); // MB
+
+    let mut file = BufReader::new(file);
 
     if args.stream {
         println!("Using stream decoder");
@@ -57,7 +61,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         let dur = Instant::now() - now;
-        println!("Time: {} ms", (dur.as_micros() as f32) / 1000.);
+        let dur = (dur.as_micros() as f32) / 1000.;
+
+        println!("File Size: {} MB", size);
+        println!("Time: {} ms", dur);
+        println!("Throughput: {} MB/sec", size / (dur / 1000.));
         println!("Num pixels: {}", img.len());
 
 
@@ -67,9 +75,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let now = Instant::now();
         let (_, img) = dec.decode(&mut file)?;
-        let dur = Instant::now() - now;
 
-        println!("Time: {} ms", (dur.as_micros() as f32) / 1000.);
+        let dur = Instant::now() - now;
+        let dur = (dur.as_micros() as f32) / 1000.;
+
+        println!("File Size: {} MB", size);
+        println!("Time: {} ms", dur);
+        println!("Throughput: {} MB/sec", size / (dur / 1000.));
         println!("Num pixels: {}", img.len());
     }
 
