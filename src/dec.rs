@@ -361,13 +361,16 @@ impl Decoder {
     }
 }
 
+#[cfg(test)]
 mod tests {
+    use crate::dec::Decoder;
+    use crate::dec::{Channels, Colorspace, Header};
+    use image::io::Reader as ImageReader;
+    use std::fs::File;
+    use std::path::PathBuf;
+
     #[test]
     fn test_decoder() {
-        use crate::dec::Decoder;
-        use image::io::Reader as ImageReader;
-        use std::fs::File;
-        use std::path::PathBuf;
 
         // Using image's QOI reader as a known-good reader. We should parse to the same bytes.
         let img_qoi_img = ImageReader::open("tests/dice.qoi")
@@ -391,8 +394,6 @@ mod tests {
 
     #[test]
     fn test_header() {
-        use crate::dec::{Channels, Colorspace, Header};
-
         let width = u32::to_be_bytes(100);
         let height = u32::to_be_bytes(200);
 

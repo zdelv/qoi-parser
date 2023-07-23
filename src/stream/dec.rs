@@ -403,14 +403,16 @@ impl Iterator for PixelsIter {
     }
 }
 
+#[cfg(test)]
 mod tests {
+    use crate::stream::dec::{Pixel, StreamDecoder, StreamDecoderOutput};
+    use image::io::Reader as ImageReader;
+    use std::fs::File;
+    use std::io::{BufReader, Read};
+    use std::path::PathBuf;
+
     #[test]
     fn test_stream_decoder() {
-        use crate::stream::dec::{Pixel, StreamDecoder, StreamDecoderOutput};
-        use image::io::Reader as ImageReader;
-        use std::fs::File;
-        use std::io::{BufReader, Read};
-        use std::path::PathBuf;
 
         let mut sdec = StreamDecoder::new();
 
