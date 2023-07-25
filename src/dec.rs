@@ -146,6 +146,7 @@ pub(crate) mod ops {
 }
 
 /// A pixel with RGBA values.
+///
 /// TODO: This only allows for RGBA pixels. RGB should be exposed somehow.
 #[derive(Copy, Clone, Debug)]
 pub struct Pixel {
@@ -186,12 +187,10 @@ impl Default for Pixel {
 /// A decoder for QOI images.
 ///
 /// This is a fairly lightweight object right now. It only contains the decoder state (last pixel
-/// seen/written) and the buffer containing past pixel values at a hashed position.
+/// seen/written) and the buffer containing past pixel values at a hashed position. The main
+/// decoding function is [decode](crate::dec::Decoder::decode).
 ///
-/// Later plans include adding streaming decoder support, where the state of this decoder would
-/// become much more complicated (most likely some form of a state machine). Streaming in this case
-/// would mean byte-by-byte parsing of some form, with minimal memory usage. Users could pass in
-/// bytes as they recieve them, and the Decoder would produce bytes as it needs.
+/// See [StreamDecoder](crate::stream::StreamDecoder) for the streaming implementation.
 pub struct Decoder {
     state: Pixel,
     buffer: [Pixel; 64],
@@ -231,21 +230,19 @@ impl Decoder {
         res.0
     }
 
-    /// Decodes incoming readable objects with a QOI format into a Vec<Pixel>. This isn't
-    /// technically streaming capable, but there might be a way to build an object that implements
-    /// Read and is a streaming input. Using a File as the input here is actually technically a
-    /// streaming input (the bytes aren't all read from disk at once), but our output is still one
-    /// big chunk.
+    /// Decodes incoming readable objects with a QOI format into a Vec<Pixel>. This assumes that
+    /// the `impl Read` object starts at the very first byte, before the header.
     ///
-    /// Assumes to start at the beginning, before the header.
+    /// This is not streaming output capable. The image is saved as a Vec<Pixel> as it is being
+    /// decoded. This means that the total size of the image, uncompressed, is stored in memory
+    /// while decoding. If the uncompressed file is larger than memory, this function will either
+    /// cause memory errors or begin forcing the host OS to page to disk.
     ///
     /// The decoding code below was heavily based on the reference implementation found at:
     /// https://github.com/phoboslab/qoi
     ///
     /// TODO: This only works with RGBA pixels, when it should work with RGB as well.
-    pub fn decode<T>(&mut self, data: &mut T) -> Result<(Header, Vec<Pixel>), anyhow::Error>
-    where
-        T: Read,
+    pub fn decode(&mut self, data: &mut impl Read) -> Result<(Header, Vec<Pixel>), anyhow::Error>
     {
         // Reset the decoder's state, just in case this object is used more than once.
         self.reset();

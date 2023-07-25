@@ -6,9 +6,11 @@ use std::fmt::Display;
 
 /// The output of the StreamDecoder while decoding.
 ///
-/// TODO: This isn't very memory efficient. Storing all of this in one struct eats up a lot of
-/// space. Maybe just have this be a series of flags and output a tuple containing the actual
-/// value.
+/// When designing a program using [StreamDecoder](crate::stream::StreamDecoder), a user may chose
+/// to ignore some of these outputs. For example, if the individual pixel values are all that is
+/// needed, then the `*Parsed` variants can be ignored. The `NeedsMore` variant also only exists
+/// for the user to potentially pre-buffer a number of bytes ahead of time, but can also be
+/// ignored.
 pub enum StreamDecoderOutput {
     Finished,                          // All pixels have been parsed.
     NeedMore(u8),                      // Number of bytes needed. Between 1 and 4.
@@ -37,6 +39,14 @@ impl Display for StreamDecoderOutput {
 }
 
 /// The internal state of a StreamDecoder.
+///
+/// `NotStarted` is the default value and Finished is the last value. `ParsingHeader` is jumped to when
+/// starting from `NotStarted`. The value in `ParsingHeader` is the number of header bytes that have
+/// been parsed. After the header finishes, `ParsingOp` is set to (0, -1), a sentinel that marks that
+/// the previous op has finished and the next byte passed into
+/// [feed][crate::stream::StreamDecoder::feed()] will be the next opcode. All other cases of
+/// `ParsingOp(a, b)` have a as the currently running opcode and b as the number of bytes parsed for
+/// that op so far.
 #[derive(Default, Debug)]
 enum StreamDecoderState {
     #[default]
@@ -60,8 +70,16 @@ impl Display for StreamDecoderState {
     }
 }
 
+
 // TODO: Allow for RGB instead of RGBA for 64 bytes of savings. Remove buffer for 4 bytes. Allow for
 // 32 bit maximum (through features) to reduce num_pix and cur_pix to u32s (4 byte savings each).
+/// A streaming decoder for the QOI image format.
+///
+/// This decoder and it's [feed][crate::stream::StreamDecoder::feed()] function are designed to
+/// store no pixel values while decoding. The pixels are instead sent out to the user immediately
+/// as they finish being decoded. This allows the user to handle storing or using the pixels as
+/// they wish and also reduces the memory usage by not storing all bytes in an image in memory.
+/// Images larger than the amount of memory in the system can be decoded using StreamDecoder.
 pub struct StreamDecoder {
     // 280 bytes total
     state: StreamDecoderState, // 2 bytes
@@ -103,8 +121,30 @@ impl StreamDecoder {
         self.cur_pix = 0;
     }
 
-    /// Feed is a big state machine that takes in a single byte and uses it's internal state to
-    /// properly parse a QOI file.
+    /// The main feeding function for decoding a QOI image as a stream of bytes.
+    ///
+    /// The user is expected to pass in the bytes of a QOI image sequentially, starting from the
+    /// first byte of the header and ending with the last byte of the image (we techically stop
+    /// before the ending sentinel).
+    ///
+    /// The function will return a `Result<StreamDecoderOutput, Error>`, where all errors are
+    /// passed through the result and all decoded values are passed through the
+    /// [StreamDecoderOutput](crate::stream::StreamDecoderOutput) object. This output contains
+    /// information regarding the header fields parsed (height, width, colorspace, and channel
+    /// count), as well as the number of bytes needed to finish parsing the current pixel(s).
+    ///
+    /// The user techincally does not need to handle any of the outputs from the
+    /// `StreamDecoderOutput` object other than `Pixels`. As long as the StreamDecoder does not
+    /// error, it will continue to return either `NeedsMore` and `Pixels` (after the header is
+    /// done) until the image is finished (marked by `Finished`). `NeedsMore` can be ignored and
+    /// is purely informational.
+    ///
+    /// See [Decoder](crate::dec::Decoder) for a chunked decoder that stores all data in memory.
+    /// `Decoder` generally has a simpler interface and is faster than `StreamDecoder`.
+    ///
+    /// Internally, feed is a big state machine that takes in a single byte and uses it's internal
+    /// state from the previous byte(s) to properly parse a QOI opcode. See the QOI spec
+    /// [here](https://qoiformat.org) for more information.
     pub fn feed(&mut self, byte: u8) -> Result<StreamDecoderOutput, Error> {
         use StreamDecoderOutput as Output;
         use StreamDecoderState as State;
@@ -371,9 +411,10 @@ impl StreamDecoder {
     }
 }
 
-/// An iterator returned by the StreamDecoder whenever it has some number of pixels extracted. This
-/// computes the pixels on the fly using information passed in by the iterator. This is designed to
-/// be memory efficient (only the information needed to make a new pixel is stored).
+/// An iterator returned by the StreamDecoder whenever it has some number of pixels extracted.
+///
+/// This computes the pixels on the fly using information passed in by the iterator. This is
+/// designed to be memory efficient as only the information needed to make a new pixel is stored.
 pub struct PixelsIter {
     count: u8,
     pixel: Pixel,
