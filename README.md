@@ -18,7 +18,7 @@ To use this package, add the git repository to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-qoi-parser = { git = "https://git.sr.ht/~rael/qoi-parser" }
+qoi-parser = { git = "https://github.com/zdelv/qoi-parser" }
 ```
 
 ### Chunked Decoder
